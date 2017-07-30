@@ -10,7 +10,7 @@ Overview
     * - docs
       - |docs|
     * - tests
-      - | |travis| |appveyor|
+      - | |travis|
         | |coveralls|
     * - package
       - | |version| |wheel| |supported-versions| |supported-implementations|
@@ -23,10 +23,6 @@ Overview
 .. |travis| image:: https://travis-ci.org/tsufeki/python-restclientaio.svg?branch=master
     :alt: Travis-CI Build Status
     :target: https://travis-ci.org/tsufeki/python-restclientaio
-
-.. |appveyor| image:: https://ci.appveyor.com/api/projects/status/github/tsufeki/python-restclientaio?branch=master&svg=true
-    :alt: AppVeyor Build Status
-    :target: https://ci.appveyor.com/project/tsufeki/python-restclientaio
 
 .. |coveralls| image:: https://coveralls.io/repos/tsufeki/python-restclientaio/badge.svg?branch=master&service=github
     :alt: Coverage Status
@@ -77,20 +73,3 @@ Development
 To run the all tests run::
 
     tox
-
-Note, to combine the coverage data from all the tox environments run:
-
-.. list-table::
-    :widths: 10 90
-    :stub-columns: 1
-
-    - - Windows
-      - ::
-
-            set PYTEST_ADDOPTS=--cov-append
-            tox
-
-    - - Other
-      - ::
-
-            PYTEST_ADDOPTS=--cov-append tox
