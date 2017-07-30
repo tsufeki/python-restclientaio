@@ -103,14 +103,15 @@ class DateTimeSerializer(Serializer):
 
 class Hydrator:
 
-    def __init__(self, serializers: Sequence[Serializer]) -> None:
+    def __init__(self) -> None:
         self._annotation_serializers = {}  # type: Dict[Type, Serializer]
         self._descriptor_serializers = {}  # type: Dict[Type, Serializer]
-        for serializer in serializers:
-            for typ in serializer.supported_annotations:
-                self._annotation_serializers[typ] = serializer
-            for typ in serializer.supported_descriptors:
-                self._descriptor_serializers[typ] = serializer
+
+    def add_serializer(self, serializer: Serializer) -> None:
+        for typ in serializer.supported_annotations:
+            self._annotation_serializers[typ] = serializer
+        for typ in serializer.supported_descriptors:
+            self._descriptor_serializers[typ] = serializer
 
     def hydrate(
         self,

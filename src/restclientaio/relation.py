@@ -106,10 +106,8 @@ class ManyToOne(Relation[R]):
 
 class RelationSerializer(Serializer):
 
-    def __init__(
-        self, resource_manager: Callable[[], ResourceManager],
-    ) -> None:
-        self._rm = resource_manager
+    def __init__(self, resource_manager: ResourceManager) -> None:
+        self._manager = resource_manager
 
 
 class OneToManySerializer(RelationSerializer):
@@ -124,10 +122,13 @@ class OneToManySerializer(RelationSerializer):
         if value is None:
             async def get() -> AsyncIterable[Resource]:
                 meta = descriptor.meta(resource)
-                async for r in self._rm().list(target_cls, meta):
+                async for r in self._manager.list(target_cls, meta):
                     yield r
             return get()
-        return [self._rm()._get_or_instantiate(target_cls, e) for e in value]
+        return [
+            self._manager._get_or_instantiate(target_cls, e)
+            for e in value
+        ]
 
 
 class ManyToOneSerializer(RelationSerializer):
@@ -144,9 +145,9 @@ class ManyToOneSerializer(RelationSerializer):
         target_cls = descriptor.target_class(cls)
         meta = descriptor.meta(resource)
         if isinstance(value, dict):
-            return self._rm()._get_or_instantiate(target_cls, value)
+            return self._manager._get_or_instantiate(target_cls, value)
 
         # assume it's id
         async def get() -> Resource:
-            return await self._rm().get(target_cls, value, meta)
+            return await self._manager.get(target_cls, value, meta)
         return get

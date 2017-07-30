@@ -88,7 +88,7 @@ class TestManyToOne:
 class TestOneToManySerializer:
 
     def test_supported_descriptors(self):
-        serializer = OneToManySerializer(lambda: None)
+        serializer = OneToManySerializer(None)
         assert serializer.supported_descriptors == {OneToMany}
         assert serializer.supported_annotations == set()
 
@@ -96,7 +96,7 @@ class TestOneToManySerializer:
         rm = mocker.Mock(spec=ResourceManager)
         rm._get_or_instantiate.return_value = target = Target()
 
-        serializer = OneToManySerializer(lambda: rm)
+        serializer = OneToManySerializer(rm)
         descr = mocker.Mock()
         descr.target_class.return_value = Target
 
@@ -119,7 +119,7 @@ class TestOneToManySerializer:
                 yield t
         rm.list.return_value = rm_list()
 
-        serializer = OneToManySerializer(lambda: rm)
+        serializer = OneToManySerializer(rm)
         descr = mocker.Mock()
         descr.target_class.return_value = Target
         descr.meta.return_value = meta = {'foo': 42}
@@ -136,7 +136,7 @@ class TestOneToManySerializer:
         assert descr.meta.call_args_list == [((obj,),)]
 
     def test_throws_on_bad_type(self):
-        serializer = OneToManySerializer(lambda: None)
+        serializer = OneToManySerializer(None)
         with pytest.raises(HydrationTypeError):
             serializer.load(object(), 7, object())
 
@@ -144,7 +144,7 @@ class TestOneToManySerializer:
 class TestManyToOneSerializer:
 
     def test_supported_descriptors(self):
-        serializer = ManyToOneSerializer(lambda: None)
+        serializer = ManyToOneSerializer(None)
         assert serializer.supported_descriptors == {ManyToOne}
         assert serializer.supported_annotations == set()
 
@@ -152,7 +152,7 @@ class TestManyToOneSerializer:
         rm = mocker.Mock(spec=ResourceManager)
         rm._get_or_instantiate.return_value = target = Target()
 
-        serializer = ManyToOneSerializer(lambda: rm)
+        serializer = ManyToOneSerializer(rm)
         descr = mocker.Mock()
         descr.target_class.return_value = Target
         descr.meta.return_value = {'bar': 42}
@@ -173,7 +173,7 @@ class TestManyToOneSerializer:
             return target
         rm.get.return_value = rm_get()
 
-        serializer = ManyToOneSerializer(lambda: rm)
+        serializer = ManyToOneSerializer(rm)
         descr = mocker.Mock()
         descr.target_class.return_value = Target
         descr.meta.return_value = meta = {'bar': 42}
@@ -186,10 +186,10 @@ class TestManyToOneSerializer:
         assert descr.meta.call_args_list == [((obj,),)]
 
     def test_load_none(self):
-        serializer = ManyToOneSerializer(lambda: None)
+        serializer = ManyToOneSerializer(None)
         assert serializer.load(object(), None, object()) is None
 
     def test_throws_on_bad_type(self):
-        serializer = ManyToOneSerializer(lambda: None)
+        serializer = ManyToOneSerializer(None)
         with pytest.raises(HydrationTypeError):
             serializer.load(object(), [], object())

@@ -12,18 +12,17 @@ __all__ = ('create_manager',)
 
 def create_manager(
     requester: Requester,
-    hydrator_serializers: Sequence[Serializer] = (),
+    custom_serializers: Sequence[Serializer] = (),
 ) -> ResourceManager:
-    manager = None
+    hydrator = Hydrator()
+    manager = ResourceManager(requester, hydrator)
     serializers = [
         ScalarSerializer(),
         DateTimeSerializer(),
-        OneToManySerializer(lambda: manager),
-        ManyToOneSerializer(lambda: manager),
+        OneToManySerializer(manager),
+        ManyToOneSerializer(manager),
     ]
-    serializers.extend(hydrator_serializers)
-    hydrator = Hydrator(serializers)
-    manager = ResourceManager(requester, hydrator)
-    hydrator = None
-    serializers = None
+    serializers.extend(custom_serializers)
+    for serializer in serializers:
+        hydrator.add_serializer(serializer)
     return manager

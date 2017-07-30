@@ -113,7 +113,9 @@ class ResourceMock(ResourceMockBase):
 class TestHydrator:
 
     def hydrate(self, res, data):
-        hydrator = Hydrator([DescrSerializer(), AnnotSerializer()])
+        hydrator = Hydrator()
+        hydrator.add_serializer(DescrSerializer())
+        hydrator.add_serializer(AnnotSerializer())
         hydrator.hydrate(res, data)
 
     def test_hydrate(self):
