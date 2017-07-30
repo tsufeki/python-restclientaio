@@ -153,3 +153,13 @@ class TestHydrator:
         data = {'foo': 'bar'}
         with pytest.raises(HydrationTypeError):
             self.hydrate(res, data)
+
+    def test_renames_field(self):
+        class Mock(ResourceMockBase):
+            foo = Descriptor()
+        Mock.foo.field = 'bar'
+        data = {'bar': 42}
+        res = Mock()
+        self.hydrate(res, data)
+        assert len(res.__dict__) == 1
+        assert res.descriptor_value == 42

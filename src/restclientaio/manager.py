@@ -67,7 +67,7 @@ class ResourceManager:
         meta[idattr] = id
         meta['uri'] = meta['uri'].format(**{idattr: id or ''})
         response = await self._requester.get(meta)
-        return self._get_or_instantiate(resource_class, response.data)
+        return self._get_or_instantiate(resource_class, response)
 
     async def list(
         self,
@@ -76,11 +76,11 @@ class ResourceManager:
     ) -> AsyncIterator[R]:
         meta = self._get_meta(resource_class, 'list', meta)
         response = await self._requester.list(meta)
-        if not isinstance(response.data, (Sequence, AsyncIterable)):
+        if not isinstance(response, (Sequence, AsyncIterable)):
             raise ResourceError(
-                f'Expected an iterable, got {type(response.data)!r}',
+                f'Expected an iterable, got {type(response)!r}',
             )
-        async with stream.iterate(response.data).stream() as s:
+        async with stream.iterate(response).stream() as s:
             async for data in s:
                 yield self._get_or_instantiate(resource_class, data)
 

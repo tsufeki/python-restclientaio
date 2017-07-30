@@ -125,7 +125,7 @@ class Paging:
         return request
 
     def set_next(self, request: Request, last: Response) -> Optional[Request]:
-        return None
+        return None  # pragma: no cover
 
     async def __call__(self, request: Request) -> Response:
         next_handler = self._next_handler
@@ -159,16 +159,16 @@ class Requester:
         self.get_handler = http(session)
         self.list_handler = self.get_handler
 
-    async def get(self, meta: Dict[str, Any]) -> Response:
-        return await self.get_handler(Request(
+    async def get(self, meta: Dict[str, Any]) -> Any:
+        return (await self.get_handler(Request(
             'GET', self._base_url + meta['uri'],
             params=meta.get('params'),
             meta=meta,
-        ))
+        ))).data
 
-    async def list(self, meta: Dict[str, Any]) -> Response:
-        return await self.list_handler(Request(
+    async def list(self, meta: Dict[str, Any]) -> Any:
+        return (await self.list_handler(Request(
             'GET', self._base_url + meta['uri'],
             params=meta.get('params'),
             meta=meta,
-        ))
+        ))).data

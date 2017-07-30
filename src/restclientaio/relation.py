@@ -47,11 +47,12 @@ class Relation(Generic[R]):
         meta = {}
         for k, v in self._meta.items():
             if isinstance(v, str):
-                meta[k] = v.format(instance)
+                v = v.format(instance)
             elif isinstance(v, dict):
                 for knested, vnested in v.items():
                     if isinstance(vnested, str):
                         v[knested] = vnested.format(instance)
+            meta[k] = v
         return meta
 
     def __set_name__(self, owner: Type[S], name: str) -> None:
