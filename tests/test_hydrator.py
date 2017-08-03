@@ -3,8 +3,9 @@ from datetime import date, datetime
 
 import pytest
 
-from restclientaio.hydrator import DateTimeSerializer, HydrationTypeError, \
-    Hydrator, ScalarSerializer, Serializer
+from restclientaio.hydrator import *
+
+from restclientaio.hydrator import annotation_descriptor  # isort:skip
 
 
 class TestHydrationTypeError:
@@ -18,9 +19,90 @@ class TestHydrationTypeError:
             "expected int or bool, got 'foo'"
 
 
+class TestDescriptor:
+
+    @pytest.mark.parametrize('descr_cls', [Descriptor, AwaitableDescriptor])
+    @pytest.mark.parametrize('readonly', [True, False])
+    def test_returns_self_on_class(self, descr_cls, readonly):
+        class C:
+            field = descr_cls(readonly=readonly)
+        assert isinstance(C.field, descr_cls)
+
+    def test_sets_value(self):
+        class C:
+            field = Descriptor()
+        c = C()
+        c.field = 42
+        assert c.field == 42
+
+    @pytest.mark.asyncio
+    async def test_sets_value_await(self):
+        class C:
+            field = AwaitableDescriptor()
+        c = C()
+        c.field = 42
+        assert await c.field == 42
+
+    @pytest.mark.parametrize('descr_cls', [Descriptor, AwaitableDescriptor])
+    def test_throws_on_readonly_set(self, descr_cls):
+        class C:
+            field = descr_cls(readonly=True)
+        c = C()
+        with pytest.raises(Exception):
+            c.field = 42
+
+    @pytest.mark.parametrize('readonly', [True, False])
+    def test_side_sets_value(self, readonly):
+        class C:
+            field = Descriptor(readonly=readonly)
+        c = C()
+        C.field.set(c, 42)
+        assert c.field == 42
+
+    @pytest.mark.parametrize('readonly', [True, False])
+    @pytest.mark.asyncio
+    async def test_side_sets_value_instant(self, readonly):
+        class C:
+            field = AwaitableDescriptor(readonly=readonly)
+        c = C()
+        C.field.set_instant(c, 42)
+        assert await c.field == 42
+
+    @pytest.mark.parametrize('readonly', [True, False])
+    @pytest.mark.asyncio
+    async def test_side_sets_value_await(self, readonly):
+        class C:
+            field = AwaitableDescriptor(readonly=readonly)
+        c = C()
+
+        async def value():
+            return 42
+        C.field.set_awaitable(c, value)
+        assert await c.field == 42
+
+    @pytest.mark.parametrize('readonly', [True, False])
+    def test_returns_none_when_not_set(self, readonly):
+        class C:
+            field = Descriptor(readonly=readonly)
+        c = C()
+        assert c.field is None
+
+    @pytest.mark.parametrize('readonly', [True, False])
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_set_await(self, readonly):
+        class C:
+            field = AwaitableDescriptor(readonly=readonly)
+        c = C()
+        assert await c.field is None
+
+
+class Resource:
+    pass
+
+
 class TestScalarSerializer:
 
-    @pytest.mark.parametrize('annot,value,expected', [
+    @pytest.mark.parametrize('annot,serialized,value', [
         (str, 'foo', 'foo'),
         (int, 42, 42),
         (float, 42, 42),
@@ -32,9 +114,13 @@ class TestScalarSerializer:
         (int, None, None),
         (None, None, None),
     ])
-    def test_load(self, annot, value, expected):
+    def test_load(self, annot, serialized, value):
         s = ScalarSerializer()
-        assert s.load(annot, value, object()) == expected
+        obj = Resource()
+        descr = annotation_descriptor(annot)(name='foo')
+        s.load(descr, serialized, obj)
+        assert obj.foo == value
+        assert s.dump(descr, obj) == serialized
 
     @pytest.mark.parametrize('annot,value', [
         (str, 7),
@@ -47,21 +133,30 @@ class TestScalarSerializer:
     ])
     def test_load_throws(self, annot, value):
         s = ScalarSerializer()
+        obj = Resource()
+        descr = annotation_descriptor(annot)(name='foo')
         with pytest.raises(HydrationTypeError):
-            s.load(annot, value, object())
+            s.load(descr, value, obj)
+        obj.foo = value
+        with pytest.raises(HydrationTypeError):
+            s.dump(descr, obj)
 
 
 class TestDateTimeSerializer:
 
-    @pytest.mark.parametrize('annot,value,expected', [
+    @pytest.mark.parametrize('annot,serialized,value', [
         (date, None, None),
         (datetime, None, None),
         (date, '2017-08-09', date(2017, 8, 9)),
         (datetime, '2017-08-09T11:09:23Z', datetime(2017, 8, 9, 11, 9, 23)),
     ])
-    def test_load(self, annot, value, expected):
+    def test_load(self, annot, serialized, value):
         s = DateTimeSerializer()
-        assert s.load(annot, value, object()) == expected
+        obj = Resource()
+        descr = annotation_descriptor(annot)(name='foo')
+        s.load(descr, serialized, obj)
+        assert obj.foo == value
+        assert s.dump(descr, obj) == serialized
 
     @pytest.mark.parametrize('annot,value', [
         (date, 7),
@@ -72,96 +167,117 @@ class TestDateTimeSerializer:
     ])
     def test_load_throws(self, annot, value):
         s = DateTimeSerializer()
+        obj = Resource()
+        descr = annotation_descriptor(annot)(name='foo')
         with pytest.raises(HydrationTypeError):
-            s.load(annot, value, object())
-
-
-class AnnotSerializer(Serializer):
-    supported_annotations = {int}
-
-    def load(self, typ, value, resource):
-        assert typ is int
-        assert isinstance(resource, ResourceMockBase)
-        if not isinstance(value, int):
-            raise HydrationTypeError(int, value)
-        return value
-
-
-class Descriptor:
-    def __set__(self, instance, value):
-        instance.descriptor_value = value
-
-
-class DescrSerializer(Serializer):
-    supported_descriptors = {Descriptor}
-
-    def load(self, descr, value, resource):
-        assert type(descr) is Descriptor
-        assert isinstance(resource, ResourceMockBase)
-        return value
-
-
-class ResourceMockBase:
-    pass
-
-
-class ResourceMock(ResourceMockBase):
-    foo: int
-    bar = Descriptor()
+            s.load(descr, value, obj)
+        obj.foo = value
+        with pytest.raises(HydrationTypeError):
+            s.dump(descr, obj)
 
 
 class TestHydrator:
 
-    def hydrate(self, res, data):
+    @pytest.fixture
+    def annot_serializer(self, mocker):
+        annot_serializer = ScalarSerializer()
+        annot_serializer.supported_descriptors = {annotation_descriptor(int)}
+        mocker.spy(annot_serializer, 'load')
+        mocker.spy(annot_serializer, 'dump')
+        return annot_serializer
+
+    @pytest.fixture
+    def descr_serializer(self, mocker):
+        class DescriptorSerializer(Serializer):
+
+            supported_descriptors = {Descriptor}
+
+            def load(self, descr, value, resource):
+                descr.set(resource, value)
+
+            def dump(self, descr, resource):
+                return descr.__get__(resource, None)
+
+        descr_serializer = DescriptorSerializer()
+        mocker.spy(descr_serializer, 'load')
+        mocker.spy(descr_serializer, 'dump')
+        return descr_serializer
+
+    @pytest.fixture
+    def hydrator(self, annot_serializer, descr_serializer):
         hydrator = Hydrator()
-        hydrator.add_serializer(DescrSerializer())
-        hydrator.add_serializer(AnnotSerializer())
-        hydrator.hydrate(res, data)
+        hydrator.add_serializer(annot_serializer)
+        hydrator.add_serializer(descr_serializer)
+        return hydrator
 
-    def test_hydrate(self):
-        res = ResourceMock()
+    def test_hydrate(self, hydrator, annot_serializer, descr_serializer):
+        class C:
+            foo: int
+            bar = Descriptor()
+        obj = C()
         data = {'bar': 'baz', 'foo': 42}
-        self.hydrate(res, data)
-        assert len(res.__dict__) == 2
-        assert res.foo == 42
-        assert res.descriptor_value == 'baz'
+        hydrator.hydrate(obj, data)
+        assert annot_serializer.load.call_args[0][1:] == (42, obj)
+        assert descr_serializer.load.call_args == ((C.bar, 'baz', obj),)
+        assert obj.__dict__ == data
+        assert hydrator.dehydrate(obj) == data
+        assert annot_serializer.dump.call_args[0][1:] == (obj,)
+        assert descr_serializer.dump.call_args == ((C.bar, obj),)
 
-    def test_ignores_missing_field(self):
-        res = ResourceMock()
+    def test_ignores_missing_field(
+        self,
+        hydrator,
+        annot_serializer,
+        descr_serializer,
+    ):
+        class C:
+            foo: int
+            bar = Descriptor()
+        obj = C()
         data = {'bar': 'baz'}
-        self.hydrate(res, data)
-        assert len(res.__dict__) == 1
-        assert res.descriptor_value == 'baz'
+        hydrator.hydrate(obj, data)
+        assert annot_serializer.load.call_args is None
+        assert descr_serializer.load.call_args == ((C.bar, 'baz', obj),)
+        assert obj.__dict__ == data
+        assert hydrator.dehydrate(obj) == {'bar': 'baz', 'foo': None}
 
-    def test_ignores_unknown_fields(self):
-        class Mock(ResourceMockBase):
-            foo: str
-            bar: int
-            baz = object()
-            _ignored: int
-        data = {
-            'foo': 'baz',
-            'bar': 1,
-            'baz': 2,
-            '_ignored': 3,
-        }
-        res = Mock()
-        self.hydrate(res, data)
-        assert len(res.__dict__) == 1
-        assert res.bar == 1
+    def test_ignores_unknown_fields(
+        self,
+        hydrator,
+        annot_serializer,
+        descr_serializer,
+    ):
+        class C:
+            foo: list
+            bar = object()
+            _baz: int
+        obj = C()
+        data = {'foo': [], 'bar': 42, '_baz': 53}
+        hydrator.hydrate(obj, data)
+        assert annot_serializer.load.call_args is None
+        assert descr_serializer.load.call_args is None
+        assert obj.__dict__ == {}
+        obj._baz = 7
+        obj.baz = 9
+        assert hydrator.dehydrate(obj) == {}
 
-    def test_throws_on_bad_type(self):
-        res = ResourceMock()
+    def test_throws_on_bad_type(self, hydrator, annot_serializer):
+        class C:
+            foo: int
+        obj = C()
         data = {'foo': 'bar'}
         with pytest.raises(HydrationTypeError):
-            self.hydrate(res, data)
+            hydrator.hydrate(obj, data)
+        obj.foo = 'bar'
+        with pytest.raises(HydrationTypeError):
+            assert hydrator.dehydrate(obj)
 
-    def test_renames_field(self):
-        class Mock(ResourceMockBase):
-            foo = Descriptor()
-        Mock.foo.field = 'bar'
-        data = {'bar': 42}
-        res = Mock()
-        self.hydrate(res, data)
-        assert len(res.__dict__) == 1
-        assert res.descriptor_value == 42
+    def test_renamed_field(self, hydrator, descr_serializer):
+        class C:
+            foo = Descriptor(field='bar')
+        obj = C()
+        data = {'bar': 'baz'}
+        hydrator.hydrate(obj, data)
+        assert descr_serializer.load.call_args == ((C.foo, 'baz', obj),)
+        assert obj.__dict__ == {'foo': 'baz'}
+        assert hydrator.dehydrate(obj) == data

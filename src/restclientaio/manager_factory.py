@@ -1,5 +1,5 @@
 
-from typing import Sequence
+from typing import List, Sequence  # noqa: F401
 
 from .hydrator import DateTimeSerializer, Hydrator, ScalarSerializer, \
     Serializer
@@ -16,7 +16,7 @@ def create_manager(
 ) -> ResourceManager:
     hydrator = Hydrator()
     manager = ResourceManager(requester, hydrator)
-    serializers = [
+    serializers: List[Serializer] = [
         ScalarSerializer(),
         DateTimeSerializer(),
         OneToManySerializer(manager),

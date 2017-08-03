@@ -1,11 +1,11 @@
 
-import asyncio
 import importlib
-from typing import Any, AsyncIterable, Awaitable, Callable, Dict, Generic, \
-    Sequence, Type, TypeVar, Union, cast
+from typing import Any, AsyncIterable, Dict, Generic, Sequence, Type, \
+    TypeVar, Union, cast
 
 from .collection import Collection
-from .hydrator import HydrationTypeError, Serializer
+from .hydrator import AwaitableDescriptor, BaseDescriptor, Descriptor, \
+    HydrationTypeError, Serializer
 from .manager import Resource, ResourceManager
 
 __all__ = (
@@ -17,6 +17,7 @@ __all__ = (
 
 R = TypeVar('R', bound=Resource)
 S = TypeVar('S', bound=Resource)
+D = TypeVar('D', bound=BaseDescriptor)
 
 
 class Relation(Generic[R]):
@@ -24,10 +25,14 @@ class Relation(Generic[R]):
     def __init__(
         self,
         target_class: Union[Type[R], str],
-        field: str = None,
+        *, field: str = None,
+        readonly: bool = False,
+        name: str = None,
         **kwargs: Any,
     ) -> None:
-        self.field = field
+        super().__init__(  # type: ignore
+            field=field, readonly=readonly, name=name,
+        )
         self._target_class = target_class
         self._meta = kwargs
 
@@ -55,99 +60,89 @@ class Relation(Generic[R]):
             meta[k] = v
         return meta
 
-    def __set_name__(self, owner: Type[S], name: str) -> None:
-        self._name = name
+
+class OneToMany(Relation[R], Descriptor[Collection[R]]):
+    pass
 
 
-class OneToMany(Relation[R]):
-
-    def __get__(
-        self,
-        instance: S,
-        owner: Type[S],
-    ) -> Collection[R]:
-        if instance is None:
-            return self  # type: ignore
-
-        return cast(Collection[R], instance.__dict__.get(self._name))
-
-    def __set__(
-        self,
-        instance: S,
-        value: Union[Sequence[R], AsyncIterable[R]],
-    ) -> None:
-        instance.__dict__[self._name] = Collection(value)
+class ManyToOne(Relation[R], AwaitableDescriptor[R]):
+    pass
 
 
-class ManyToOne(Relation[R]):
-
-    def __get__(
-        self,
-        instance: S,
-        owner: Type[S],
-    ) -> Awaitable[R]:
-        if instance is None:
-            return self  # type: ignore
-
-        async def get() -> R:
-            value = instance.__dict__.get(self._name)
-            if asyncio.iscoroutinefunction(value):
-                value = instance.__dict__[self._name] = await value()
-            return cast(R, value)
-        return get()
-
-    def __set__(
-        self,
-        instance: S,
-        value: Union[R, Callable[[], Awaitable[R]]],
-    ) -> None:
-        instance.__dict__[self._name] = value
-
-
-class RelationSerializer(Serializer):
+class RelationSerializer(Serializer[D]):
 
     def __init__(self, resource_manager: ResourceManager) -> None:
         self._manager = resource_manager
 
 
-class OneToManySerializer(RelationSerializer):
+class OneToManySerializer(RelationSerializer[OneToMany[R]]):
 
     supported_descriptors = {OneToMany}
 
-    def load(self, descriptor: Any, value: Any, resource: object) -> Any:
+    def load(
+        self,
+        descr: OneToMany[R],
+        value: Any,
+        resource: Any,
+    ) -> None:
         if value is not None and not isinstance(value, Sequence):
             raise HydrationTypeError(Sequence, value)
         cls = type(resource)
-        target_cls = descriptor.target_class(cls)
+        target_cls = descr.target_class(cls)
         if value is None:
-            async def get() -> AsyncIterable[Resource]:
-                meta = descriptor.meta(resource)
+            async def get() -> AsyncIterable[R]:
+                meta = descr.meta(resource)
                 async for r in self._manager.list(target_cls, meta):
                     yield r
-            return get()
-        return [
-            self._manager._get_or_instantiate(target_cls, e)
-            for e in value
-        ]
+            coll = Collection(get())
+        else:
+            coll = Collection([
+                self._manager._get_or_instantiate(target_cls, e)
+                for e in value
+            ])
+        descr.set(resource, coll)
+
+    def dump(
+        self,
+        descr: OneToMany[R],
+        resource: Any,
+    ) -> str:
+        raise NotImplementedError()
 
 
-class ManyToOneSerializer(RelationSerializer):
+class ManyToOneSerializer(RelationSerializer[ManyToOne[R]]):
 
     supported_descriptors = {ManyToOne}
 
-    def load(self, descriptor: Any, value: Any, resource: object) -> Any:
+    def load(
+        self,
+        descr: ManyToOne[R],
+        value: Any,
+        resource: Any,
+    ) -> None:
         types = (dict, int, str)
         if value is None:
-            return None
+            descr.set_instant(resource, value)
+            return
         if not isinstance(value, types):
             raise HydrationTypeError(types, value)
         cls = type(resource)
-        target_cls = descriptor.target_class(cls)
-        meta = descriptor.meta(resource)
+        target_cls = descr.target_class(cls)
+        meta = descr.meta(resource)
         if isinstance(value, dict):
-            return self._manager._get_or_instantiate(target_cls, value)
+            descr.set_instant(
+                resource,
+                self._manager._get_or_instantiate(target_cls, value),
+            )
+        else:
+            # assume it's id
+            async def get() -> R:
+                return await self._manager.get(target_cls, value, meta)
+            descr.set_awaitable(resource, get)
 
-        # assume it's id
-        async def get() -> Resource:
-            return await self._manager.get(target_cls, value, meta)
-        return get
+    def dump(
+        self,
+        descr: ManyToOne[R],
+        resource: Any,
+    ) -> str:
+        raise NotImplementedError()
