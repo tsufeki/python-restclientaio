@@ -291,8 +291,9 @@ class Hydrator:
         for k, descr in fields.items():
             try:
                 orig_k = descr.field or k
-                serializer = self._serializers[type(descr)]
-                data[orig_k] = serializer.dump(descr, resource)
+                if not descr.readonly:
+                    serializer = self._serializers[type(descr)]
+                    data[orig_k] = serializer.dump(descr, resource)
             except HydrationTypeError as e:
                 e.cls = type(resource)
                 e.attr = k

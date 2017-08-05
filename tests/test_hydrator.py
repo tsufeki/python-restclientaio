@@ -281,3 +281,15 @@ class TestHydrator:
         assert descr_serializer.load.call_args == ((C.foo, 'baz', obj),)
         assert obj.__dict__ == {'foo': 'baz'}
         assert hydrator.dehydrate(obj) == data
+
+    def test_ignores_readonly_field(
+        self,
+        hydrator,
+        descr_serializer,
+    ):
+        class C:
+            foo = Descriptor(readonly=True)
+        obj = C()
+        C.foo.set(obj, 42)
+        assert hydrator.dehydrate(obj) == {}
+        assert descr_serializer.dump.call_args is None

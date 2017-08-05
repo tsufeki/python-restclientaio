@@ -158,6 +158,8 @@ class Requester:
         self._base_url = base_url
         self.get_handler = http(session)
         self.list_handler = self.get_handler
+        self.create_handler = self.get_handler
+        self.update_handler = self.get_handler
 
     async def get(self, meta: Dict[str, Any]) -> Any:
         return (await self.get_handler(Request(
@@ -171,4 +173,20 @@ class Requester:
             'GET', self._base_url + meta['uri'],
             params=meta.get('params'),
             meta=meta,
+        ))).data
+
+    async def create(self, meta: Dict[str, Any], data: Dict[str, Any]) -> Any:
+        return (await self.create_handler(Request(
+            'POST', self._base_url + meta['uri'],
+            params=meta.get('params'),
+            meta=meta,
+            data=data,
+        ))).data
+
+    async def update(self, meta: Dict[str, Any], data: Dict[str, Any]) -> Any:
+        return (await self.update_handler(Request(
+            'PUT', self._base_url + meta['uri'],
+            params=meta.get('params'),
+            meta=meta,
+            data=data,
         ))).data

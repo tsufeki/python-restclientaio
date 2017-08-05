@@ -2,6 +2,7 @@
 from collections import defaultdict
 from typing import Any, AsyncIterable, AsyncIterator, Dict, Sequence, Type, \
     TypeVar, cast
+from weakref import WeakValueDictionary
 
 from aiostream import stream
 
@@ -19,8 +20,8 @@ class ResourceManager:
     def __init__(self, requester: Requester, hydrator: Hydrator) -> None:
         self._requester = requester
         self._hydrator = hydrator
-        self._identity_map = defaultdict(lambda: {}) \
-            # type: Dict[Type[Resource], Dict[Any, Resource]]
+        self._identity_map = defaultdict(lambda: WeakValueDictionary()) \
+            # type: Dict[Type[Resource], WeakValueDictionary[Any, Resource]]
 
     def _get_meta(
         self,
@@ -37,6 +38,18 @@ class ResourceManager:
     def _get_id_attr(self, resource_class: Type[R]) -> str:
         return str(getattr(getattr(resource_class, '_Meta', None), 'id', 'id'))
 
+    def get_id(self, resource: R) -> Any:
+        idattr = self._get_id_attr(type(resource))
+        return getattr(resource, idattr, None)
+
+    def is_new(self, resource: R) -> Any:
+        return self.get_id(resource) is None
+
+    def _track(self, resource: R) -> None:
+        id = self.get_id(resource)  # noqa: B001
+        if id is not None:
+            self._identity_map[type(resource)][id] = resource
+
     def _get_or_instantiate(
         self,
         resource_class: Type[R],
@@ -51,9 +64,8 @@ class ResourceManager:
         resource = cast(R, self._identity_map[resource_class].get(id))
         if resource is None:
             resource = self.new(resource_class)
-            if id is not None:
-                self._identity_map[resource_class][id] = resource
         self._hydrator.hydrate(resource, data)
+        self._track(resource)
         return resource
 
     async def get(
@@ -96,12 +108,24 @@ class ResourceManager:
         self._hydrator.hydrate(resource, data, force_clear=True)
         return resource
 
+    async def save(self, resource: R, meta: Dict[str, Any] = {}) -> None:
+        data = self._hydrator.dehydrate(resource)
+        if self.is_new(resource):
+            meta = self._get_meta(type(resource), 'create', meta)
+            data = await self._requester.create(meta, data)
+        else:
+            meta = self._get_meta(type(resource), 'update', meta)
+            data = await self._requester.update(meta, data)
+
+        if data and isinstance(data, dict):
+            self._hydrator.hydrate(resource, data)
+        self._track(resource)
+
     def detach(
         self,
         resource: Resource,
     ) -> None:
-        idattr = self._get_id_attr(type(resource))
-        id = getattr(resource, idattr, None)  # noqa: B001
+        id = self.get_id(resource)  # noqa: B001
         if id:
             try:
                 del self._identity_map[type(R)][id]

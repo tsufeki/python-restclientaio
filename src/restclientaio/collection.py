@@ -41,11 +41,11 @@ class Collection(AsyncIterable[T]):
             self._collection = collection
 
     @overload
-    async def __getitem__(self, index: int) -> T:  # pragma: no cover
+    async def __getitem__(self, index: int) -> T:
         pass
 
     @overload  # noqa: F811
-    async def __getitem__(self, index: slice) -> List[T]:  # pragma: no cover
+    async def __getitem__(self, index: slice) -> List[T]:
         pass
 
     async def __getitem__(self, index: Any) -> Any:  # noqa: F811

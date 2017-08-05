@@ -26,6 +26,7 @@ class TestManager:
 
         class ResourceA(Resource):
             create_count = 0
+            id = 42  # noqa: B003
 
             def __init__(self):
                 type(self).create_count += 1
@@ -33,9 +34,11 @@ class TestManager:
             class _Meta:
                 get = dict(uri='/foo')
 
+        objs = []
         for i in (0, 1):
             requester.get.return_value = coro(data)
             obj = await rm.get(ResourceA, 42, {'foo': 'bar'})
+            objs.append(obj)
             assert isinstance(obj, ResourceA)
             assert requester.get.call_args == (({
                 'foo': 'bar',
@@ -106,3 +109,55 @@ class TestManager:
 
         with pytest.raises(ResourceError):
             rm.new(Resource, data)
+
+    @pytest.mark.asyncio
+    async def test_save_create(self, requester, hydrator):
+        rm = ResourceManager(requester, hydrator)
+        data = {'bar': 33}
+        data_id = {'bar': 33, 'id': 42}
+
+        class ResourceA(Resource):
+            pass
+
+        requester.create.return_value = coro(data_id)
+        hydrator.dehydrate.return_value = data
+        obj = ResourceA()
+        await rm.save(obj)
+
+        assert hydrator.dehydrate.call_args == ((obj,),)
+        assert hydrator.hydrate.call_args == ((obj, data_id),)
+        assert requester.create.call_args == (({}, data),)
+
+    @pytest.mark.asyncio
+    async def test_save_update(self, requester, hydrator):
+        rm = ResourceManager(requester, hydrator)
+        data = {'bar': 33, 'id': 42}
+
+        class ResourceA(Resource):
+            id = 42  # noqa: B003
+
+        requester.update.return_value = coro(data)
+        hydrator.dehydrate.return_value = data
+        obj = ResourceA()
+        await rm.save(obj)
+
+        assert hydrator.dehydrate.call_args == ((obj,),)
+        assert hydrator.hydrate.call_args == ((obj, data),)
+        assert requester.update.call_args == (({}, data),)
+
+    @pytest.mark.asyncio
+    async def test_save_update_empty_return(self, requester, hydrator):
+        rm = ResourceManager(requester, hydrator)
+        data = {'bar': 33, 'id': 42}
+
+        class ResourceA(Resource):
+            id = 42  # noqa: B003
+
+        requester.update.return_value = coro(None)
+        hydrator.dehydrate.return_value = data
+        obj = ResourceA()
+        await rm.save(obj)
+
+        assert hydrator.dehydrate.call_args == ((obj,),)
+        assert hydrator.hydrate.call_args is None
+        assert requester.update.call_args == (({}, data),)

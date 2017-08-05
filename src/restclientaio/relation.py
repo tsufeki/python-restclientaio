@@ -1,12 +1,12 @@
 
 import importlib
-from typing import Any, AsyncIterable, Dict, Generic, Sequence, Type, \
-    TypeVar, Union, cast
+from typing import Any, AsyncIterable, Awaitable, Callable, Dict, Generic, \
+    Sequence, Type, TypeVar, Union, cast
 
 from .collection import Collection
 from .hydrator import AwaitableDescriptor, BaseDescriptor, Descriptor, \
     HydrationTypeError, Serializer
-from .manager import Resource, ResourceManager
+from .manager import Resource, ResourceError, ResourceManager
 
 __all__ = (
     'OneToMany',
@@ -17,6 +17,7 @@ __all__ = (
 
 R = TypeVar('R', bound=Resource)
 S = TypeVar('S', bound=Resource)
+U = TypeVar('U')
 D = TypeVar('D', bound=BaseDescriptor)
 
 
@@ -62,11 +63,60 @@ class Relation(Generic[R]):
 
 
 class OneToMany(Relation[R], Descriptor[Collection[R]]):
-    pass
+
+    def __init__(
+        self,
+        target_class: Union[Type[R], str],
+        *, field: str = None,
+        readonly: bool = True,
+        name: str = None,
+        **kwargs: Any,
+    ) -> None:
+        if not readonly:
+            raise ValueError(f'{type(self).__name__}.readonly must be True')
+        super().__init__(
+            target_class, field=field, readonly=readonly, name=name, **kwargs,
+        )
 
 
 class ManyToOne(Relation[R], AwaitableDescriptor[R]):
-    pass
+
+    def __init__(
+        self,
+        target_class: Union[Type[R], str],
+        *, field: str = None,
+        readonly: bool = False,
+        name: str = None,
+        save_by_value: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            target_class, field=field, readonly=readonly, name=name, **kwargs,
+        )
+        self.save_by_value = save_by_value
+
+    def __set_name__(self, owner: Type[U], name: str) -> None:
+        super().__set_name__(owner, name)
+        self._id_name = f'_{self.name}__id'
+
+    def get_id(self, instance: U) -> Any:
+        return instance.__dict__.get(self._id_name)
+
+    def get_instant(self, instance: U) -> R:
+        return cast(R, instance.__dict__.get(self.name))
+
+    def set_instant(self, instance: U, value: R) -> None:
+        super().set_instant(instance, value)
+        instance.__dict__[self._id_name] = None
+
+    def set_awaitable(
+        self,
+        instance: U,
+        value: Callable[[], Awaitable[R]],
+        id: Any = None,  # noqa: B002
+    ) -> None:
+        super().set_awaitable(instance, value)
+        instance.__dict__[self._id_name] = id
 
 
 class RelationSerializer(Serializer[D]):
@@ -106,7 +156,7 @@ class OneToManySerializer(RelationSerializer[OneToMany[R]]):
         self,
         descr: OneToMany[R],
         resource: Any,
-    ) -> str:
+    ) -> Any:
         raise NotImplementedError()
 
 
@@ -138,11 +188,21 @@ class ManyToOneSerializer(RelationSerializer[ManyToOne[R]]):
             # assume it's id
             async def get() -> R:
                 return await self._manager.get(target_cls, value, meta)
-            descr.set_awaitable(resource, get)
+            descr.set_awaitable(resource, get, id=value)
 
     def dump(
         self,
         descr: ManyToOne[R],
         resource: Any,
-    ) -> str:
-        raise NotImplementedError()
+    ) -> Any:
+        if descr.save_by_value:
+            raise NotImplementedError()
+        else:
+            target = descr.get_instant(resource)
+            id = descr.get_id(resource)  # noqa: B001
+            if not id and target:
+                id = self._manager.get_id(target)  # noqa: B001
+                if not id:
+                    raise ResourceError("Can't save many-to-one relation, "
+                                        'target has no id')
+            return id

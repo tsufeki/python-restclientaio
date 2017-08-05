@@ -143,18 +143,26 @@ class TestHandlers:
 
 class TestRequester:
 
-    @pytest.mark.parametrize('action', ['get', 'list'])
+    @pytest.mark.parametrize('action,method,kwargs', [
+        ('get', 'GET', {}),
+        ('list', 'GET', {}),
+        ('create', 'POST', {'data': {}}),
+        ('update', 'PUT', {'data': {}}),
+    ])
     @pytest.mark.asyncio
-    async def test_requester(self, action, mocker):
+    async def test_requester(self, action, method, kwargs, mocker):
         http = mocker.patch('restclientaio.request.http', autospec=True)
         data = {'foo': 'bar'}
         http.return_value.return_value = coro(Response(data=data))
         requester = Requester('http://example.com', mocker.Mock())
-        result = await getattr(requester, action)(dict(
-            uri='/foo.json',
-            params={'bar': 'baz'},
-        ))
+        result = await getattr(requester, action)(
+            dict(
+                uri='/foo.json',
+                params={'bar': 'baz'},
+            ),
+            **kwargs,
+        )
         req = http.return_value.call_args[0][0]
         assert isinstance(req, Request)
-        assert req.method == 'GET'
+        assert req.method == method
         assert result == data

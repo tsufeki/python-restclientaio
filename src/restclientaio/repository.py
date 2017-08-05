@@ -37,3 +37,8 @@ class Repository(Generic[R]):
 
     def new(self, **kwargs: Any) -> R:
         return self._resource_manager.new(self._resource_class, kwargs)
+
+    async def save(self, resource: R) -> None:
+        if not isinstance(resource, self._resource_class):
+            raise ValueError('Resource does not belong to this repository')
+        await self._resource_manager.save(resource)

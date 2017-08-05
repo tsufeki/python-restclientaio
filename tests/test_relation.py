@@ -2,7 +2,7 @@
 import pytest
 
 from restclientaio.hydrator import HydrationTypeError
-from restclientaio.manager import ResourceManager
+from restclientaio.manager import ResourceError, ResourceManager
 from restclientaio.relation import *
 
 
@@ -54,6 +54,24 @@ class TestRelation:
         assert r.field == 'foo'
         assert r.readonly
         assert r.name == 'bar'
+
+
+class TestManyToOne:
+
+    def test_set(self):
+        descr = ManyToOne(Target)
+        res = Resource()
+        target = Target()
+        descr.__set_name__(Resource, 'foo')
+
+        async def awaitable():
+            pass
+        descr.set_awaitable(res, awaitable, id=42)
+        assert descr.get_id(res) == 42
+
+        descr.set_instant(res, target)
+        assert descr.get_instant(res) is target
+        assert descr.get_id(res) is None
 
 
 class TestOneToManySerializer:
@@ -170,3 +188,61 @@ class TestManyToOneSerializer:
         serializer = ManyToOneSerializer(None)
         with pytest.raises(HydrationTypeError):
             serializer.load(object(), [], object())
+
+    def test_dump_object(self, mocker):
+        rm = mocker.Mock(spec=ResourceManager)
+        rm.get_id.return_value = 42
+        res = Resource()
+        target = Target()
+
+        serializer = ManyToOneSerializer(rm)
+        descr = mocker.Mock()
+        descr.save_by_value = False
+        descr.get_id.return_value = None
+        descr.get_instant.return_value = target
+
+        assert serializer.dump(descr, res) == 42
+        assert rm.get_id.call_args == ((target,),)
+        assert descr.get_id.call_args == ((res,),)
+        assert descr.get_instant.call_args == ((res,),)
+
+    def test_dump_id(self, mocker):
+        rm = mocker.Mock(spec=ResourceManager)
+        res = Resource()
+
+        serializer = ManyToOneSerializer(rm)
+        descr = mocker.Mock()
+        descr.save_by_value = False
+        descr.get_id.return_value = 42
+        descr.get_instant.return_value = None
+
+        assert serializer.dump(descr, res) == 42
+        assert rm.get_id.call_args is None
+
+    def test_dump_none(self, mocker):
+        rm = mocker.Mock(spec=ResourceManager)
+        res = Resource()
+
+        serializer = ManyToOneSerializer(rm)
+        descr = mocker.Mock()
+        descr.save_by_value = False
+        descr.get_id.return_value = None
+        descr.get_instant.return_value = None
+
+        assert serializer.dump(descr, res) is None
+        assert rm.get_id.call_args is None
+
+    def test_dump_throws_when_no_id(self, mocker):
+        rm = mocker.Mock(spec=ResourceManager)
+        rm.get_id.return_value = None
+        res = Resource()
+        target = Target()
+
+        serializer = ManyToOneSerializer(rm)
+        descr = mocker.Mock()
+        descr.save_by_value = False
+        descr.get_id.return_value = None
+        descr.get_instant.return_value = target
+
+        with pytest.raises(ResourceError):
+            serializer.dump(descr, res)
