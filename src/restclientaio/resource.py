@@ -1,6 +1,8 @@
 
 from typing import Any, ClassVar
 
+from _util import full_name
+
 __all__ = ('Resource', 'ResourceError')
 
 
@@ -15,4 +17,4 @@ class Resource:
         cls = type(self)
         idattr = getattr(getattr(cls, '_Meta', None), 'id', 'id')
         idvalue = getattr(self, idattr, None)
-        return f'<{cls.__module__}.{cls.__qualname__} {idattr}={idvalue!r}>'
+        return f'<{full_name(cls)} {idattr}={idvalue!r}>'

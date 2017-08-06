@@ -6,7 +6,7 @@ from typing import AbstractSet, Any, Awaitable, Callable, ClassVar, Dict, \
     Generic, Sequence, Tuple, Type, TypeVar, Union, cast
 
 from .resource import ResourceError
-from .util import full_attr_name
+from ._util import full_name
 
 __all__ = (
     'Hydrator',
@@ -45,7 +45,7 @@ class HydrationTypeError(ResourceError):
     def __str__(self) -> str:
         attr_desc = ''
         if self.cls and self.attr:
-            attr_desc = f' for {full_attr_name(self.cls, self.attr)}'
+            attr_desc = f' for {full_name(self.cls, self.attr)}'
         expected_types = ' or '.join(t.__name__ for t in self.expected_types)
         return f'{self.msg}{attr_desc}: expected {expected_types}, ' \
             f'got {self.actual_value!r:.50s}'
@@ -79,7 +79,7 @@ class Descriptor(BaseDescriptor[T]):
 
     def __set__(self, instance: U, value: T) -> None:
         if self.readonly:
-            raise Exception(f'{full_attr_name(type(instance), self.name)} '
+            raise Exception(f'{full_name(type(instance), self.name)} '
                             f'is read-only')
         self.set(instance, value)
 
@@ -110,7 +110,7 @@ class AwaitableDescriptor(BaseDescriptor[T]):
 
     def __set__(self, instance: U, value: T) -> None:
         if self.readonly:
-            raise Exception(f'{full_attr_name(type(instance), self.name)} '
+            raise Exception(f'{full_name(type(instance), self.name)} '
                             f'is read-only')
         self.set_instant(instance, value)
 
