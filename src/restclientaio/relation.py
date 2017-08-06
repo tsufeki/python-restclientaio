@@ -1,12 +1,15 @@
+"""Relations between resource types."""
 
 import importlib
+from functools import lru_cache
 from typing import Any, AsyncIterable, Awaitable, Callable, Dict, Generic, \
     Sequence, Type, TypeVar, Union, cast
 
 from .collection import Collection
 from .hydrator import AwaitableDescriptor, BaseDescriptor, Descriptor, \
     HydrationTypeError, Serializer
-from .manager import Resource, ResourceError, ResourceManager
+from .manager import ResourceManager
+from .resource import Resource, ResourceError
 
 __all__ = (
     'OneToMany',
@@ -37,7 +40,9 @@ class Relation(Generic[R]):
         self._target_class = target_class
         self._meta = kwargs
 
+    @lru_cache(maxsize=256)
     def target_class(self, owner: Type[S]) -> Type[R]:
+        """Get class on the other side of this relation."""
         if isinstance(self._target_class, str):
             module = importlib.import_module(owner.__module__)
             cls = cast(Type[R], getattr(module, self._target_class, None))
@@ -49,7 +54,9 @@ class Relation(Generic[R]):
             self._target_class = cls
         return self._target_class
 
+    @lru_cache(maxsize=256)
     def meta(self, instance: S) -> Dict[str, Any]:
+        """Get processed meta for this model instance."""
         meta = {}
         for k, v in self._meta.items():
             if isinstance(v, str):
@@ -63,6 +70,30 @@ class Relation(Generic[R]):
 
 
 class OneToMany(Relation[R], Descriptor[Collection[R]]):
+    r"""One to many relation.
+
+    Example::
+
+        class User(Resource):
+            id: int
+
+        class Group(Resource):
+            users = OneToMany(User, params={'group_id': '{0.id}'})
+
+    When accessed, returns a `.Collection`.
+
+    When deserializing, related resources may be (partially) included
+    in instance's JSON. They will be properly hydrated as much as possible
+    without additional HTTP requests made.
+
+    :param target_class: Target class or its name (useful for circular
+        dependencies).
+    :param field: Override the key in the serialized dictionary. Default is
+        the variable name this descriptor is assigned to.
+    :param readonly: Must be `True`, currently collections are not editable.
+    :param kwargs: Rest of the parameters are `str.format`\ ed with instance
+        as parameter ``0`` and passed to `.ResourceManager.list`.
+    """
 
     def __init__(
         self,
@@ -80,6 +111,32 @@ class OneToMany(Relation[R], Descriptor[Collection[R]]):
 
 
 class ManyToOne(Relation[R], AwaitableDescriptor[R]):
+    r"""Many to one relation.
+
+    Example::
+
+        class Group(Resource):
+            id: int
+
+        class User(Resource):
+            group = ManyToOne(Group, field='group_id')
+
+    When accessed returns an awaitable (to be used with ``await``).
+
+    When deserializing, related resources may be (partially) included
+    in instance's JSON. They will be properly hydrated as much as possible
+    without additional HTTP requests made. Otherwise, data is assumed to be
+    target object id.
+
+    :param target_class: Target class or its name (useful for circular
+        dependencies).
+    :param field: Override the key in the serialized dictionary. Default is
+        the variable name this descriptor is assigned to.
+    :param readonly: Don't allow setting the field by user code.
+    :param save_by_value: Whether to save by value or by id.
+    :param kwargs: Rest of the parameters are `str.format`\ ed with instance
+        as parameter ``0`` and passed to `.ResourceManager.get`.
+    """
 
     def __init__(
         self,
@@ -126,6 +183,10 @@ class RelationSerializer(Serializer[D]):
 
 
 class OneToManySerializer(RelationSerializer[OneToMany[R]]):
+    """`OneToMany` serializer.
+
+    :param resource_manager:
+    """
 
     supported_descriptors = {OneToMany}
 
@@ -161,6 +222,10 @@ class OneToManySerializer(RelationSerializer[OneToMany[R]]):
 
 
 class ManyToOneSerializer(RelationSerializer[ManyToOne[R]]):
+    """`ManyToOne` serializer.
+
+    :param resource_manager:
+    """
 
     supported_descriptors = {ManyToOne}
 

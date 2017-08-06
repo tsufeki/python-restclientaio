@@ -91,24 +91,16 @@ class TestManager:
 
     def test_new(self, mocker, hydrator):
         rm = ResourceManager(None, hydrator)
-        data = {'id': 42, 'bar': 33}
 
         class ResourceA(Resource):
             pass
 
-        obj = rm.new(ResourceA, data)
+        obj = rm.new(ResourceA)
         assert isinstance(obj, ResourceA)
         assert hydrator.hydrate.call_args == (
-            (obj, data),
+            (obj, {}),
             {'force_clear': True},
         )
-
-    def test_new_throws_on_bad_type(self, mocker, requester, hydrator):
-        rm = ResourceManager(requester, hydrator)
-        data = True
-
-        with pytest.raises(ResourceError):
-            rm.new(Resource, data)
 
     @pytest.mark.asyncio
     async def test_save_create(self, requester, hydrator):

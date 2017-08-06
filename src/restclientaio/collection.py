@@ -1,3 +1,4 @@
+"""Asynchronous, lazily loaded collection of objects."""
 
 from typing import Any, AsyncIterable, AsyncIterator, List, Sequence, \
     TypeVar, Union, overload
@@ -10,6 +11,17 @@ T = TypeVar('T')
 
 
 class Collection(AsyncIterable[T]):
+    """Asynchronous, lazy and read-only collection of objects.
+
+    `Collection` is an async iterable (can be iterated over using ``async for``
+    loop.
+
+    Items can be accessed with ``await collection[index]``. Slicing is possible
+    as well.
+
+    :param collection: Either a sequence or an async iterable which will be
+        used as a source of items for this collection.
+    """
 
     def __init__(
         self,
@@ -23,9 +35,11 @@ class Collection(AsyncIterable[T]):
 
     @property
     def loaded(self) -> bool:
+        """`True` if collection has been fully loaded."""
         return self._collection is not None
 
     async def to_list(self) -> List[T]:
+        """Convert to list."""
         return await self[:]
 
     async def __aiter__(self) -> AsyncIterator[T]:

@@ -1,3 +1,4 @@
+"""`.ResourceManager` factory."""
 
 from typing import List, Sequence  # noqa: F401
 
@@ -14,6 +15,12 @@ def create_manager(
     requester: Requester,
     custom_serializers: Sequence[Serializer] = (),
 ) -> ResourceManager:
+    """Create new `.ResourceManager`.
+
+    :param requester:
+    :param custom_serializers: Additional serializer to register with
+        the `.Hydrator`.
+    """
     hydrator = Hydrator()
     manager = ResourceManager(requester, hydrator)
     serializers: List[Serializer] = [

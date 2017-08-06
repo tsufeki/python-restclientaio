@@ -2,6 +2,4 @@ Reference
 =========
 
 .. toctree::
-    :glob:
-
-    restclientaio*
+    restclientaio

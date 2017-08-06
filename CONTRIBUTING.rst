@@ -35,7 +35,7 @@ If you are proposing a feature:
 Development
 ===========
 
-To set up `python-restclientaio` for local development:
+To set up ``python-restclientaio`` for local development:
 
 1. Fork `python-restclientaio <https://github.com/tsufeki/python-restclientaio>`_
    (look for the "Fork" button).

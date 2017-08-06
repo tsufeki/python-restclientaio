@@ -1,3 +1,4 @@
+"""Serialization and deserialization of object to and from JSON."""
 
 from abc import ABC, abstractmethod
 from datetime import date, datetime
@@ -5,14 +6,17 @@ from functools import lru_cache
 from typing import AbstractSet, Any, Awaitable, Callable, ClassVar, Dict, \
     Generic, Sequence, Tuple, Type, TypeVar, Union, cast
 
-from .resource import ResourceError
 from ._util import full_name
+from .resource import ResourceError
 
 __all__ = (
     'Hydrator',
     'HydrationTypeError',
+    'BaseDescriptor',
     'Descriptor',
     'AwaitableDescriptor',
+    'annotation_descriptor',
+    'BaseAnnotationDescriptor',
     'Serializer',
     'ScalarSerializer',
     'DateTimeSerializer',
@@ -25,6 +29,7 @@ D = TypeVar('D', bound='BaseDescriptor')
 
 
 class HydrationTypeError(ResourceError):
+    """Field can't be (de-)serialized because of wrong type of its value."""
 
     def __init__(
         self,
@@ -52,6 +57,15 @@ class HydrationTypeError(ResourceError):
 
 
 class BaseDescriptor(Generic[T]):
+    """Base descriptor used to declare field on a model class.
+
+    :param field: Override the key in the serialized dictionary. Default is
+        the variable name this descriptor is assigned to.
+    :param readonly: Don't allow setting the field by user code.
+
+    Derived classes should return themselves when descriptor is used in class
+    context.
+    """
 
     def __init__(
         self,
@@ -71,6 +85,17 @@ class BaseDescriptor(Generic[T]):
 
 
 class Descriptor(BaseDescriptor[T]):
+    """Simple eager field.
+
+    Example::
+
+        class Model:
+            foo = Descriptor()
+
+        m = Model()
+        m.foo = 3
+        print(m.foo)
+    """
 
     def __get__(self, instance: U, owner: Type[U]) -> T:
         if instance is None:
@@ -84,10 +109,32 @@ class Descriptor(BaseDescriptor[T]):
         self.set(instance, value)
 
     def set(self, instance: U, value: T) -> None:
+        """Set the field.
+
+        This method is used when deserializing and works for read-only field
+        as well.
+
+        :param instance: Model instance to set the field on.
+        :param value:
+        """
         instance.__dict__[self.name] = value
 
 
 class AwaitableDescriptor(BaseDescriptor[T]):
+    """Lazy, async field.
+
+    ``await`` should always be used when retrieving value.
+
+    Example::
+
+        class Model:
+            foo = AwaitableDescriptor(readonly=True)
+
+        async def main():
+            m = Model()
+            m.foo = 3
+            print(await m.foo)
+    """
 
     def __set_name__(self, owner: Type[U], name: str) -> None:
         super().__set_name__(owner, name)
@@ -99,6 +146,7 @@ class AwaitableDescriptor(BaseDescriptor[T]):
         return self._get(instance)
 
     async def _get(self, instance: U) -> T:
+        """Return value as awaitable."""
         d = instance.__dict__
         if self.name not in d:
             if self._awaitable_name in d:
@@ -115,6 +163,14 @@ class AwaitableDescriptor(BaseDescriptor[T]):
         self.set_instant(instance, value)
 
     def set_instant(self, instance: U, value: T) -> None:
+        """Set the field with an instant (not lazy) value.
+
+        This method is used when deserializing and works for read-only field
+        as well.
+
+        :param instance: Model instance to set the field on.
+        :param value:
+        """
         d = instance.__dict__
         d[self.name] = value
         try:
@@ -127,6 +183,15 @@ class AwaitableDescriptor(BaseDescriptor[T]):
         instance: U,
         value: Callable[[], Awaitable[T]],
     ) -> None:
+        """Set the field with a lazy value.
+
+        This method is used when deserializing and works for read-only field
+        as well.
+
+        :param instance: Model instance to set the field on.
+        :param value: A coroutine function (or any callable returning
+            an awaitable) yielding a field value.
+        """
         d = instance.__dict__
         d[self._awaitable_name] = value
         try:
@@ -136,28 +201,55 @@ class AwaitableDescriptor(BaseDescriptor[T]):
 
 
 class Serializer(ABC, Generic[D]):
+    """Abstract serializer.
+
+    :ivar supported_descriptors: Set of descriptor types processable
+        by this serializer.
+    """
 
     supported_descriptors: AbstractSet[Type[D]] = set()
 
     @abstractmethod
     def load(self, descr: D, value: Any, resource: Any) -> None:
+        """Deserialize value and set field on a model.
+
+        :param descr: Descriptor instance.
+        :param value: Serialized value.
+        :param resource: Model instance.
+        :raises HydrationTypeError:
+        """
         pass
 
     @abstractmethod
     def dump(self, descr: D, resource: Any) -> Any:
+        """Serialize field value.
+
+        :param descr: Descriptor instance.
+        :param resource: Model instance to retrieve field value from.
+        :raises HydrationTypeError:
+        """
         pass
 
 
 class BaseAnnotationDescriptor(Descriptor[T]):
+
     typ: ClassVar[Type[T]]
+    """Annotation type."""
 
 
 @lru_cache(maxsize=None)
 def annotation_descriptor(typ: Type[T]) -> Type[BaseAnnotationDescriptor[T]]:
+    r"""Return a `Descriptor` class for given annotation type.
+
+    Returned class can be used to register a serializer for a type annotated
+    field (by including it in `Serializer`.\ ``supported_descriptors``).
+
+    :param typ:
+    """
     return type(
         'AnnotationDescriptor',
         (BaseAnnotationDescriptor[T],),
-        {'typ': typ},
+        {'typ': typ, '__module__': __name__},
     )
 
 
@@ -165,8 +257,12 @@ Scalar = Union[None, str, int, float, bool]
 
 
 class ScalarSerializer(Serializer[BaseAnnotationDescriptor]):
+    """Serializer for annotated scalar fields.
 
-    supported_types: Dict[Type[Scalar], Tuple[Type[Scalar], ...]] = {
+    Supports `str`, `int`, `float`, `bool`, `None` annotations.
+    """
+
+    _supported_types: Dict[Type[Scalar], Tuple[Type[Scalar], ...]] = {
         None: (str, int, float, bool),
         type(None): (str, int, float, bool),
         str: (str,),
@@ -177,7 +273,7 @@ class ScalarSerializer(Serializer[BaseAnnotationDescriptor]):
 
     supported_descriptors = {
         annotation_descriptor(typ)
-        for typ in supported_types
+        for typ in _supported_types
     }
 
     def load(
@@ -186,7 +282,7 @@ class ScalarSerializer(Serializer[BaseAnnotationDescriptor]):
         value: Any,
         resource: Any,
     ) -> None:
-        types = self.supported_types[descr.typ]
+        types = self._supported_types[descr.typ]
         if value is not None and type(value) not in types:
             raise HydrationTypeError(types, value)
         descr.set(resource, value)
@@ -197,13 +293,20 @@ class ScalarSerializer(Serializer[BaseAnnotationDescriptor]):
         resource: Any,
     ) -> Any:
         value = descr.__get__(resource, None)
-        types = self.supported_types[descr.typ]
+        types = self._supported_types[descr.typ]
         if value is not None and type(value) not in types:
             raise HydrationTypeError(types, value)
         return value
 
 
 class DateTimeSerializer(Serializer[BaseAnnotationDescriptor]):
+    """Serializer for annotated `datetime.date` and `datetime.datetime` fields.
+
+    :param date_fmt: Format of `datetime.date`, as
+        in `datetime.datetime.strptime`.
+    :param datetime_fmt: Format of `datetime.datetime`, as
+        in `datetime.datetime.strptime`.
+    """
 
     supported_descriptors = {
         annotation_descriptor(date),
@@ -254,11 +357,13 @@ class DateTimeSerializer(Serializer[BaseAnnotationDescriptor]):
 
 
 class Hydrator:
+    """Load and dump objects from and to JSON dict."""
 
     def __init__(self) -> None:
         self._serializers = {}  # type: Dict[Type, Serializer]
 
     def add_serializer(self, serializer: Serializer) -> None:
+        """Register a field serializer."""
         for typ in serializer.supported_descriptors:
             self._serializers[typ] = serializer
 
@@ -268,6 +373,13 @@ class Hydrator:
         data: Dict[str, Any],
         force_clear: bool = False,
     ) -> None:
+        """Deserialize data and set fields on resource.
+
+        :param resource: Model instance to set fields on.
+        :param data: A JSON dict with serialized fields.
+        :param force_clear: If `True`, reset field when they are missing from
+            data as well.
+        """
         cls = type(resource)
         fields = self._get_fields(cls)
         for k, descr in fields.items():
@@ -285,6 +397,10 @@ class Hydrator:
         self,
         resource: Any,
     ) -> Dict[str, Any]:
+        """Serialize object.
+
+        :param resource: Model instance to serialize.
+        """
         data: Dict[str, Any] = {}
         cls = type(resource)
         fields = self._get_fields(cls)
@@ -305,6 +421,7 @@ class Hydrator:
         self,
         cls: Type,
     ) -> Dict[str, BaseDescriptor]:
+        """Get fields definitions from class."""
         fields: Dict[str, BaseDescriptor] = {}
         descr: BaseDescriptor
         for k, typ in getattr(cls, '__annotations__', {}).items():
