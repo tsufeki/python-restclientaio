@@ -39,7 +39,7 @@ def format_recur(value: T, *args: Any, **kwargs: Any) -> T:
         memo.add(val_id)
         if isinstance(val, list):
             result: Any = [format_value(i) for i in val]
-        if isinstance(val, dict):
+        else:
             result = {format_value(k): format_value(v) for k, v in val.items()}
         memo.remove(val_id)
         return result

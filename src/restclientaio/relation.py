@@ -31,12 +31,13 @@ class Relation(Generic[R]):
         self,
         target_class: Union[Type[R], str],
         *, field: str = None,
+        save_field: str = None,
         readonly: bool = False,
         name: str = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(  # type: ignore
-            field=field, readonly=readonly, name=name,
+            field=field, save_field=save_field, readonly=readonly, name=name,
         )
         self._target_class = target_class
         self._meta = kwargs
@@ -82,6 +83,7 @@ class OneToMany(Relation[R], Descriptor[Collection[R]]):
         dependencies).
     :param field: Override the key in the serialized dictionary. Default is
         the variable name this descriptor is assigned to.
+    :param save_field: Same as *field* but only for saving (serializing).
     :param readonly: Must be `True`, currently collections are not editable.
     :param kwargs: Rest of the parameters are `str.format`\ ed with instance
         as parameter ``0`` and passed to `.ResourceManager.list`.
@@ -91,6 +93,7 @@ class OneToMany(Relation[R], Descriptor[Collection[R]]):
         self,
         target_class: Union[Type[R], str],
         *, field: str = None,
+        save_field: str = None,
         readonly: bool = True,
         name: str = None,
         **kwargs: Any,
@@ -98,7 +101,8 @@ class OneToMany(Relation[R], Descriptor[Collection[R]]):
         if not readonly:
             raise ValueError(f'{type(self).__name__}.readonly must be True')
         super().__init__(
-            target_class, field=field, readonly=readonly, name=name, **kwargs,
+            target_class, field=field, save_field=save_field,
+            readonly=readonly, name=name, **kwargs,
         )
 
 
@@ -124,6 +128,7 @@ class ManyToOne(Relation[R], AwaitableDescriptor[R]):
         dependencies).
     :param field: Override the key in the serialized dictionary. Default is
         the variable name this descriptor is assigned to.
+    :param save_field: Same as *field* but only for saving (serializing).
     :param readonly: Don't allow setting the field by user code.
     :param save_by_value: Whether to save by value or by id.
     :param kwargs: Rest of the parameters are `str.format`\ ed with instance
@@ -134,13 +139,15 @@ class ManyToOne(Relation[R], AwaitableDescriptor[R]):
         self,
         target_class: Union[Type[R], str],
         *, field: str = None,
+        save_field: str = None,
         readonly: bool = False,
         name: str = None,
         save_by_value: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            target_class, field=field, readonly=readonly, name=name, **kwargs,
+            target_class, field=field, save_field=save_field,
+            readonly=readonly, name=name, **kwargs,
         )
         self.save_by_value = save_by_value
 

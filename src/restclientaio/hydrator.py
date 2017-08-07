@@ -61,6 +61,7 @@ class BaseDescriptor(Generic[T]):
 
     :param field: Override the key in the serialized dictionary. Default is
         the variable name this descriptor is assigned to.
+    :param save_field: Same as *field* but only for saving (serializing).
     :param readonly: Don't allow setting the field by user code.
 
     Derived classes should return themselves when descriptor is used in class
@@ -70,10 +71,12 @@ class BaseDescriptor(Generic[T]):
     def __init__(
         self,
         *, field: str = None,
+        save_field: str = None,
         readonly: bool = False,
         name: str = None,
     ) -> None:
         self.field = field
+        self.save_field = save_field
         self.readonly = readonly
         self.name = name
 
@@ -81,7 +84,9 @@ class BaseDescriptor(Generic[T]):
         if self.name is None:
             self.name = name
         if self.field is None:
-            self.field = name
+            self.field = self.name
+        if self.save_field is None:
+            self.save_field = self.field
 
 
 class Descriptor(BaseDescriptor[T]):
@@ -406,7 +411,7 @@ class Hydrator:
         fields = self._get_fields(cls)
         for k, descr in fields.items():
             try:
-                orig_k = descr.field or k
+                orig_k = descr.save_field or k
                 if not descr.readonly:
                     serializer = self._serializers[type(descr)]
                     data[orig_k] = serializer.dump(descr, resource)

@@ -282,6 +282,16 @@ class TestHydrator:
         assert obj.__dict__ == {'foo': 'baz'}
         assert hydrator.dehydrate(obj) == data
 
+    def test_renamed_field_for_saving(self, hydrator, descr_serializer):
+        class C:
+            foo = Descriptor(save_field='bar')
+        obj = C()
+        data = {'foo': 'baz'}
+        hydrator.hydrate(obj, data)
+        assert descr_serializer.load.call_args == ((C.foo, 'baz', obj),)
+        assert obj.__dict__ == data
+        assert hydrator.dehydrate(obj) == {'bar': 'baz'}
+
     def test_ignores_readonly_field(
         self,
         hydrator,
