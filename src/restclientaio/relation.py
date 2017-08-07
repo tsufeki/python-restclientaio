@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Any, AsyncIterable, Awaitable, Callable, Dict, Generic, \
     Sequence, Type, TypeVar, Union, cast
 
+from ._util import format_recur
 from .collection import Collection
 from .hydrator import AwaitableDescriptor, BaseDescriptor, Descriptor, \
     HydrationTypeError, Serializer
@@ -57,16 +58,7 @@ class Relation(Generic[R]):
     @lru_cache(maxsize=256)
     def meta(self, instance: S) -> Dict[str, Any]:
         """Get processed meta for this model instance."""
-        meta = {}
-        for k, v in self._meta.items():
-            if isinstance(v, str):
-                v = v.format(instance)
-            elif isinstance(v, dict):
-                for knested, vnested in v.items():
-                    if isinstance(vnested, str):
-                        v[knested] = vnested.format(instance)
-            meta[k] = v
-        return meta
+        return format_recur(self._meta, instance)
 
 
 class OneToMany(Relation[R], Descriptor[Collection[R]]):
